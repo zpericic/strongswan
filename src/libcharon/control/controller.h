@@ -81,6 +81,8 @@ struct controller_t {
 	 *
 	 * @param peer_cfg		peer_cfg to use for IKE_SA setup
 	 * @param child_cfg		optional child_cfg to set up CHILD_SA from
+	 * @param my_host		optional address hint for source
+	 * @param other_host		optional address hint for destination
 	 * @param cb			logging callback
 	 * @param param			parameter to include in each call of cb
 	 * @param max_level		maximum log level for which cb is invoked
@@ -95,6 +97,7 @@ struct controller_t {
 	 */
 	status_t (*initiate)(controller_t *this,
 						 peer_cfg_t *peer_cfg, child_cfg_t *child_cfg,
+						 host_t *my_host, host_t *other_host,
 						 controller_cb_t callback, void *param,
 						 level_t max_level, u_int timeout, bool limits);
 

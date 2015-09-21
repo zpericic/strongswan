@@ -240,6 +240,7 @@ static bool on_accept(private_load_tester_control_t *this, stream_t *io)
 
 		switch (charon->controller->initiate(charon->controller,
 							peer_cfg, child_cfg->get_ref(child_cfg),
+							NULL, NULL,
 							(void*)initiate_cb, listener, LEVEL_CTRL, 0, FALSE))
 		{
 			case NEED_MORE:
