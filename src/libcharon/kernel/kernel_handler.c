@@ -53,20 +53,28 @@ static inline protocol_id_t proto_ip2ike(uint8_t protocol)
 }
 
 METHOD(kernel_listener_t, acquire, bool,
-	private_kernel_handler_t *this, uint32_t reqid,
+	private_kernel_handler_t *this, uint32_t reqid, uint32_t cpu,
 	traffic_selector_t *src_ts, traffic_selector_t *dst_ts)
 {
+	char buf[32] = "";
+
+	if (cpu != CPU_ID_MAX)
+	{
+		snprintf(buf, sizeof(buf), " cpu {%u}", cpu);
+	}
 	if (src_ts && dst_ts)
 	{
 		DBG1(DBG_KNL, "creating acquire job for policy %R === %R with "
-			 "reqid {%u}", src_ts, dst_ts, reqid);
+			 "reqid {%u}%s", src_ts, dst_ts, reqid, buf);
 	}
 	else
 	{
-		DBG1(DBG_KNL, "creating acquire job for policy with reqid {%u}", reqid);
+		DBG1(DBG_KNL, "creating acquire job for policy with reqid {%u}%s",
+			 reqid, buf);
 	}
 	lib->processor->queue_job(lib->processor,
-							(job_t*)acquire_job_create(reqid, src_ts, dst_ts));
+							(job_t*)acquire_job_create(reqid, cpu,
+													   src_ts, dst_ts));
 	return TRUE;
 }
 
