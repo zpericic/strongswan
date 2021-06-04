@@ -46,6 +46,7 @@ METHOD(job_t, execute, job_requeue_t,
 	private_process_message_job_t *this)
 {
 	ike_sa_t *ike_sa;
+	ike_sa_id_t *id;
 
 #ifdef ME
 	/* if this is an unencrypted INFORMATIONAL exchange it is likely a
@@ -79,6 +80,23 @@ METHOD(job_t, execute, job_requeue_t,
 		else
 		{
 			charon->ike_sa_manager->checkin(charon->ike_sa_manager, ike_sa);
+		}
+	}
+	if (this->message->get_request(this->message) &&
+		this->message->get_exchange_type(this->message) == IKE_SA_INIT)
+	{
+		id = this->message->get_ike_sa_id(this->message);
+		charon->ike_sa_manager->remove_half_open(charon->ike_sa_manager,
+								this->message->get_source(this->message));
+	}
+	if (this->message->get_exchange_type(this->message) == ID_PROT ||
+		this->message->get_exchange_type(this->message) == AGGRESSIVE)
+	{
+		id = this->message->get_ike_sa_id(this->message);
+		if (id->get_responder_spi(id) == 0)
+		{
+			charon->ike_sa_manager->remove_half_open(charon->ike_sa_manager,
+									this->message->get_source(this->message));
 		}
 	}
 	return JOB_REQUEUE_NONE;

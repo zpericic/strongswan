@@ -487,8 +487,7 @@ static job_requeue_t receive_packets(private_receiver_t *this)
 	message = message_create_from_packet(packet);
 	if (message->parse_header(message) != SUCCESS)
 	{
-		DBG1(DBG_NET, "received invalid IKE header from %H - ignored",
-			 packet->get_source(packet));
+		DBG1(DBG_NET, "received invalid IKE header from %H - ignored", src);
 		charon->bus->alert(charon->bus, ALERT_PARSE_ERROR_HEADER, message);
 		message->destroy(message);
 		return JOB_REQUEUE_DIRECT;
@@ -535,7 +534,7 @@ static job_requeue_t receive_packets(private_receiver_t *this)
 	{
 		DBG1(DBG_NET, "received unsupported IKE version %d.%d from %H, sending "
 			 "INVALID_MAJOR_VERSION", message->get_major_version(message),
-			 message->get_minor_version(message), packet->get_source(packet));
+			 message->get_minor_version(message), src);
 		message->destroy(message);
 		return JOB_REQUEUE_DIRECT;
 	}
@@ -549,16 +548,20 @@ static job_requeue_t receive_packets(private_receiver_t *this)
 			message->destroy(message);
 			return JOB_REQUEUE_DIRECT;
 		}
+		charon->ike_sa_manager->put_half_open(charon->ike_sa_manager, src);
 	}
 	if (message->get_exchange_type(message) == ID_PROT ||
 		message->get_exchange_type(message) == AGGRESSIVE)
 	{
 		id = message->get_ike_sa_id(message);
-		if (id->get_responder_spi(id) == 0 &&
-		   (this->initiator_only || drop_ike_sa_init(this, message)))
+		if (id->get_responder_spi(id) == 0)
 		{
-			message->destroy(message);
-			return JOB_REQUEUE_DIRECT;
+			if (this->initiator_only || drop_ike_sa_init(this, message))
+			{
+				message->destroy(message);
+				return JOB_REQUEUE_DIRECT;
+			}
+			charon->ike_sa_manager->put_half_open(charon->ike_sa_manager, src);
 		}
 	}
 

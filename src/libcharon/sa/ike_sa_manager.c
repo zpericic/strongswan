@@ -786,17 +786,16 @@ static bool wait_for_entry(private_ike_sa_manager_t *this, entry_t *entry,
 /**
  * Put a half-open SA into the hash table.
  */
-static void put_half_open(private_ike_sa_manager_t *this, entry_t *entry)
+static void put_half_open_internal(private_ike_sa_manager_t *this, host_t *ip,
+								   bool initiator)
 {
 	table_item_t *item;
 	u_int row, segment;
 	rwlock_t *lock;
-	ike_sa_id_t *ike_id;
 	half_open_t *half_open;
 	chunk_t addr;
 
-	ike_id = entry->ike_sa_id;
-	addr = entry->other->get_address(entry->other);
+	addr = ip->get_address(ip);
 	row = chunk_hash(addr) & this->table_mask;
 	segment = row & this->segment_mask;
 	lock = this->half_open_segments[segment].lock;
@@ -826,7 +825,7 @@ static void put_half_open(private_ike_sa_manager_t *this, entry_t *entry)
 	}
 	half_open->count++;
 	ref_get(&this->half_open_count);
-	if (!ike_id->is_initiator(ike_id))
+	if (!initiator)
 	{
 		half_open->count_responder++;
 		ref_get(&this->half_open_count_responder);
@@ -838,16 +837,15 @@ static void put_half_open(private_ike_sa_manager_t *this, entry_t *entry)
 /**
  * Remove a half-open SA from the hash table.
  */
-static void remove_half_open(private_ike_sa_manager_t *this, entry_t *entry)
+static void remove_half_open_internal(private_ike_sa_manager_t *this,
+									  host_t *ip, bool initiator)
 {
 	table_item_t *item, *prev = NULL;
 	u_int row, segment;
 	rwlock_t *lock;
-	ike_sa_id_t *ike_id;
 	chunk_t addr;
 
-	ike_id = entry->ike_sa_id;
-	addr = entry->other->get_address(entry->other);
+	addr = ip->get_address(ip);
 	row = chunk_hash(addr) & this->table_mask;
 	segment = row & this->segment_mask;
 	lock = this->half_open_segments[segment].lock;
@@ -859,7 +857,7 @@ static void remove_half_open(private_ike_sa_manager_t *this, entry_t *entry)
 
 		if (chunk_equals(addr, half_open->other))
 		{
-			if (!ike_id->is_initiator(ike_id))
+			if (!initiator)
 			{
 				half_open->count_responder--;
 				ignore_result(ref_put(&this->half_open_count_responder));
@@ -905,7 +903,8 @@ static u_int create_and_put_entry(private_ike_sa_manager_t *this,
 	{
 		(*entry)->half_open = TRUE;
 		(*entry)->other = other->clone(other);
-		put_half_open(this, *entry);
+		put_half_open_internal(this, (*entry)->other,
+							   ike_sa_id->is_initiator(ike_sa_id));
 	}
 	return put_entry(this, *entry);
 }
@@ -1886,15 +1885,18 @@ METHOD(ike_sa_manager_t, checkin, void,
 		{
 			/* not half open anymore */
 			entry->half_open = FALSE;
-			remove_half_open(this, entry);
+			remove_half_open_internal(this, entry->other,
+							entry->ike_sa_id->is_initiator(entry->ike_sa_id));
 		}
 		else if (entry->half_open && !other->ip_equals(other, entry->other))
 		{
 			/* the other host's IP has changed, we must update the hash table */
-			remove_half_open(this, entry);
+			remove_half_open_internal(this, entry->other,
+							entry->ike_sa_id->is_initiator(entry->ike_sa_id));
 			DESTROY_IF(entry->other);
 			entry->other = other->clone(other);
-			put_half_open(this, entry);
+			put_half_open_internal(this, entry->other,
+							entry->ike_sa_id->is_initiator(entry->ike_sa_id));
 		}
 		else if (!entry->half_open &&
 				 ike_sa->get_state(ike_sa) == IKE_CONNECTING)
@@ -1902,7 +1904,8 @@ METHOD(ike_sa_manager_t, checkin, void,
 			/* this is a new half-open SA */
 			entry->half_open = TRUE;
 			entry->other = other->clone(other);
-			put_half_open(this, entry);
+			put_half_open_internal(this, entry->other,
+							entry->ike_sa_id->is_initiator(entry->ike_sa_id));
 		}
 		entry->condvar->signal(entry->condvar);
 	}
@@ -2007,7 +2010,8 @@ METHOD(ike_sa_manager_t, checkin_and_destroy, void,
 
 		if (entry->half_open)
 		{
-			remove_half_open(this, entry);
+			remove_half_open_internal(this, entry->other,
+							entry->ike_sa_id->is_initiator(entry->ike_sa_id));
 		}
 		if (entry->my_id && entry->other_id)
 		{
@@ -2318,6 +2322,18 @@ METHOD(ike_sa_manager_t, get_half_open_count, u_int,
 	return count;
 }
 
+METHOD(ike_sa_manager_t, put_half_open, void,
+	private_ike_sa_manager_t *this, host_t *ip)
+{
+	put_half_open_internal(this, ip, FALSE);
+}
+
+METHOD(ike_sa_manager_t, remove_half_open, void,
+	private_ike_sa_manager_t *this, host_t *ip)
+{
+	remove_half_open_internal(this, ip, FALSE);
+}
+
 METHOD(ike_sa_manager_t, set_spi_cb, void,
 	private_ike_sa_manager_t *this, spi_cb_t callback, void *data)
 {
@@ -2342,7 +2358,8 @@ static void destroy_all_entries(private_ike_sa_manager_t *this)
 		charon->bus->set_sa(charon->bus, entry->ike_sa);
 		if (entry->half_open)
 		{
-			remove_half_open(this, entry);
+			remove_half_open_internal(this, entry->other,
+							entry->ike_sa_id->is_initiator(entry->ike_sa_id));
 		}
 		if (entry->my_id && entry->other_id)
 		{
@@ -2494,6 +2511,8 @@ ike_sa_manager_t *ike_sa_manager_create()
 			.checkin_and_destroy = _checkin_and_destroy,
 			.get_count = _get_count,
 			.get_half_open_count = _get_half_open_count,
+			.put_half_open = _put_half_open,
+			.remove_half_open =_remove_half_open,
 			.flush = _flush,
 			.set_spi_cb = _set_spi_cb,
 			.destroy = _destroy,

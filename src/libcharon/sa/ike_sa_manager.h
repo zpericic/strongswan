@@ -266,6 +266,22 @@ struct ike_sa_manager_t {
 								 bool responder_only);
 
 	/**
+	 * Increase the number of half-open IKE_SAs as responder upon receipt of
+	 * of an IKE_SA_INIT.
+	 *
+	 * @param ip				IP of sender
+	 */
+	void (*put_half_open)(ike_sa_manager_t *this, host_t *ip);
+
+	/**
+	 * Decrease the number of half-open IKE_SAs as responder after processing
+	 * an IKE_SA_INIT.
+	 *
+	 * @param ip				IP of sender
+	 */
+	void (*remove_half_open)(ike_sa_manager_t *this, host_t *ip);
+
+	/**
 	 * Set the callback to generate IKE SPIs
 	 *
 	 * @param callback		callback to register
